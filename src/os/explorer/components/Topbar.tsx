@@ -13,7 +13,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRepo } from "@automerge/automerge-repo-react-hooks";
-import { SyncIndicator } from "./SyncIndicator";
+import {
+  AUTOMERGE_SYNC_SERVER_STORAGE_ID,
+  JACQUARD_SYNC_SERVER_STORAGE_ID,
+  SyncIndicator,
+} from "./SyncIndicator";
 import { AccountPicker } from "./AccountPicker";
 import { saveFile } from "../utils";
 import { DocLink, DocLinkWithFolderPath, FolderDoc } from "@/datatypes/folder";
@@ -105,7 +109,18 @@ export const Topbar: React.FC<TopbarProps> = ({
       </div>
       <div className="ml-1 mt-[-2px]">
         {isValidAutomergeUrl(selectedDocUrl) && (
-          <SyncIndicator docUrl={selectedDocUrl} />
+          <>
+            <SyncIndicator
+              docUrl={selectedDocUrl}
+              storageId={AUTOMERGE_SYNC_SERVER_STORAGE_ID}
+              name={"sync.automerge.org"}
+            />
+            <SyncIndicator
+              docUrl={selectedDocUrl}
+              storageId={JACQUARD_SYNC_SERVER_STORAGE_ID}
+              name={"jacquard.sync"}
+            />
+          </>
         )}
       </div>
 

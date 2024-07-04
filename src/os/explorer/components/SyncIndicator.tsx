@@ -14,21 +14,47 @@ import { WifiIcon, WifiOffIcon, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createMachine, raise, stateIn } from "xstate";
 
-const SYNC_SERVER_STORAGE_ID = (import.meta.env?.VITE_SYNC_SERVER_STORAGE_ID ??
+export const AUTOMERGE_SYNC_SERVER_STORAGE_ID = (import.meta.env
+  ?.VITE_SYNC_SERVER_STORAGE_ID ??
   "3760df37-a4c6-4f66-9ecd-732039a9385d") as StorageId;
 
-export const SyncIndicator = ({ docUrl }: { docUrl: AutomergeUrl }) => {
+export const JACQUARD_SYNC_SERVER_STORAGE_ID =
+  "b9645395-f69a-40ca-ab42-b3a63e11ea18" as StorageId;
+
+export const SyncIndicator = ({
+  docUrl,
+  storageId,
+  name,
+}: {
+  docUrl: AutomergeUrl;
+  storageId?: StorageId;
+  name?: string;
+}) => {
   const handle = useHandle(docUrl);
   if (!handle) {
     return null;
   }
-  return <SyncIndicatorInner key={handle.url} handle={handle} />;
+  return (
+    <SyncIndicatorInner
+      key={handle.url}
+      handle={handle}
+      storageId={storageId}
+      name={name}
+    />
+  );
 };
 
 // NOTE: this sync indicator component does *not* support changing the handle between renders.
 // If you want to change the handle, you should re-mount the component.
-const SyncIndicatorInner = ({ handle }: { handle: DocHandle<unknown> }) => {
-  const repo = useRepo();
+const SyncIndicatorInner = ({
+  handle,
+  storageId = AUTOMERGE_SYNC_SERVER_STORAGE_ID,
+  name,
+}: {
+  handle: DocHandle<unknown>;
+  storageId?: StorageId;
+  name?: string;
+}) => {
   const {
     lastSyncUpdate,
     isInternetConnected,
@@ -37,8 +63,8 @@ const SyncIndicatorInner = ({ handle }: { handle: DocHandle<unknown> }) => {
     syncServerResponseError,
     syncServerHeads,
     ownHeads,
-  } = useSyncIndicatorState(handle);
-
+  } = useSyncIndicatorState(handle, storageId);
+  const repo = useRepo();
   const isSynced = syncState === SyncState.InSync;
 
   const prevHandle = useRef(undefined);
@@ -70,7 +96,7 @@ const SyncIndicatorInner = ({ handle }: { handle: DocHandle<unknown> }) => {
 
     const syncServerSyncState = await repo.storageSubsystem.loadSyncState(
       handle.documentId,
-      SYNC_SERVER_STORAGE_ID
+      storageId
     );
 
     const data = {
@@ -81,8 +107,9 @@ const SyncIndicatorInner = ({ handle }: { handle: DocHandle<unknown> }) => {
         syncState: ownSyncState,
       },
       syncServer: {
+        name,
         heads: syncServerHeads,
-        storageId: SYNC_SERVER_STORAGE_ID,
+        storageId,
         syncState: syncServerSyncState,
       },
     };
@@ -99,6 +126,15 @@ const SyncIndicatorInner = ({ handle }: { handle: DocHandle<unknown> }) => {
 
   const headsView = (
     <div className="mt-2 pt-2 border-t border-gray-300 relative">
+      {name && (
+        <div className="whitespace-nowrap flex">
+          <dt className="font-bold inline mr-1">Name:</dt>
+          <dd className="inline text-ellipsis flex-shrink overflow-hidden min-w-0">
+            {name}
+          </dd>
+        </div>
+      )}
+
       <div className="whitespace-nowrap flex">
         <dt className="font-bold inline mr-1">Server heads:</dt>
         <dd className="inline text-ellipsis flex-shrink overflow-hidden min-w-0">
@@ -278,14 +314,24 @@ interface SyncIndicatorState {
   syncServerResponseError: boolean;
 }
 
-function useSyncIndicatorState(handle: DocHandle<unknown>): SyncIndicatorState {
+function useSyncIndicatorState(
+  handle: DocHandle<unknown>,
+  storageId: StorageId
+): SyncIndicatorState {
   const repo = useRepo();
   const [lastSyncUpdate, setLastSyncUpdate] = useState<number | undefined>(); // todo: should load that from persisted sync state
   const [syncServerHeads, setSyncServerHeads] = useState<A.Heads | undefined>();
   const [ownHeads, setOwnHeads] = useState<A.Heads | undefined>();
 
   useEffect(() => {
-    repo.subscribeToRemotes([SYNC_SERVER_STORAGE_ID]);
+    // hack: since we have two sync indictators we hard code the storage ids here
+    // otherwise one of the subscriptions would win, since subscribe unsubscribes any existing storageIds that are not in the list
+    // maybe we should reconsider this api
+    // todo: remove this once we got rid of the duplicte
+    repo.subscribeToRemotes([
+      AUTOMERGE_SYNC_SERVER_STORAGE_ID,
+      JACQUARD_SYNC_SERVER_STORAGE_ID,
+    ]);
   }, [repo]);
 
   const [machineConfig] = useState(() =>
@@ -324,7 +370,7 @@ function useSyncIndicatorState(handle: DocHandle<unknown>): SyncIndicatorState {
   // heads change listener
   useEffect(() => {
     if (machine.matches("sync.unknown")) {
-      const syncServerHeads = handle.getRemoteHeads(SYNC_SERVER_STORAGE_ID);
+      const syncServerHeads = handle.getRemoteHeads(storageId);
       setSyncServerHeads(syncServerHeads ?? []); // initialize to empty heads if we have no state
 
       handle.doc().then((doc) => {
@@ -340,7 +386,7 @@ function useSyncIndicatorState(handle: DocHandle<unknown>): SyncIndicatorState {
     };
 
     const onRemoteHeads = ({ storageId, heads }) => {
-      if (storageId === SYNC_SERVER_STORAGE_ID) {
+      if (storageId === storageId) {
         send({ type: "RECEIVED_SYNC_MESSAGE" });
         setSyncServerHeads(heads);
         setLastSyncUpdate(Date.now());
