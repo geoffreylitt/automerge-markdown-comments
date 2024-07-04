@@ -29,7 +29,7 @@ const CACHE_NAME = "v6";
 
 const PEER_ID = "service-worker-" + Math.round(Math.random() * 1000000);
 
-async function initializeRepo(wasmBlobUrl) {
+async function initializeRepo(wasmBlobUrl, backupSync) {
   console.log("Initializing automerge wasm with: ", wasmBlobUrl);
   await Automerge.initializeWasm(wasmBlobUrl);
 
@@ -38,10 +38,15 @@ async function initializeRepo(wasmBlobUrl) {
     storage: new IndexedDBStorageAdapter(),
     network: [
       new BrowserWebSocketClientAdapter("wss://sync.automerge.org"),
-      new BrowserWebSocketClientAdapter(
-        "wss://jacquardsync.memoryandthought.me"
-      ),
-    ],
+    ].concat(
+      backupSync
+        ? [
+            new BrowserWebSocketClientAdapter(
+              "wss://jacquardsync.memoryandthought.me"
+            ),
+          ]
+        : []
+    ),
     peerId: PEER_ID,
     sharePolicy: async (peerId) => peerId.includes("storage-server"),
     enableRemoteHeadsGossiping: true,
@@ -84,7 +89,8 @@ self.addEventListener("message", async (event) => {
   console.log(`${PEER_ID}: Client messaged`, event.data);
   if (event.data && event.data.type === "INITIALIZE_WASM") {
     const wasmBlobUrl = event.data.wasmBlobUrl;
-    initializeRepo(wasmBlobUrl).then((repo) => {
+    const backupSync = event.data.backupSync;
+    initializeRepo(wasmBlobUrl, backupSync).then((repo) => {
       resolveRepo(repo);
       // Put the repo on the global context for interactive use
       self.repo = repo;

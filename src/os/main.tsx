@@ -17,10 +17,15 @@ import { RepoContext } from "@automerge/automerge-repo-react-hooks";
 import { getAccount } from "./explorer/account.js";
 import { Explorer } from "./explorer/components/Explorer.js";
 import "./index.css";
+import { BACKUP_SYNC } from "./explorer/components/SyncIndicator.js";
 
 const serviceWorker = await setupServiceWorker();
 // See the notes in service-worker.js for why we need to do this
-serviceWorker.postMessage({ type: "INITIALIZE_WASM", wasmBlobUrl });
+serviceWorker.postMessage({
+  type: "INITIALIZE_WASM",
+  wasmBlobUrl,
+  backupSync: BACKUP_SYNC,
+});
 
 // Service workers stop on their own, which breaks sync.
 // Here we ping the service worker while the tab is running
@@ -62,7 +67,6 @@ async function setupServiceWorker(): Promise<ServiceWorker> {
 }
 
 async function setupRepo() {
-
   // We create a repo without any network adapters.
   // Later we connect the repo with the repo in the service worker through a message channel
   const repo = new Repo({

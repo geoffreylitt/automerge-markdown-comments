@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { useRepo } from "@automerge/automerge-repo-react-hooks";
 import {
   AUTOMERGE_SYNC_SERVER_STORAGE_ID,
+  BACKUP_SYNC,
   JACQUARD_SYNC_SERVER_STORAGE_ID,
   SyncIndicator,
 } from "./SyncIndicator";
@@ -115,11 +116,13 @@ export const Topbar: React.FC<TopbarProps> = ({
               storageId={AUTOMERGE_SYNC_SERVER_STORAGE_ID}
               name={"sync.automerge.org"}
             />
-            <SyncIndicator
-              docUrl={selectedDocUrl}
-              storageId={JACQUARD_SYNC_SERVER_STORAGE_ID}
-              name={"jacquard.sync"}
-            />
+            {BACKUP_SYNC && (
+              <SyncIndicator
+                docUrl={selectedDocUrl}
+                storageId={JACQUARD_SYNC_SERVER_STORAGE_ID}
+                name={"jacquard.sync"}
+              />
+            )}
           </>
         )}
       </div>
