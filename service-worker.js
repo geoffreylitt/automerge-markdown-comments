@@ -12,7 +12,7 @@ import { MessageChannelNetworkAdapter } from "@automerge/automerge-repo-network-
  * which builds the file using esbuild in development configured in
  * vite.config.ts.
  *
- * Why?! You exclaim in horror. The problem is that Firefox does not support 
+ * Why?! You exclaim in horror. The problem is that Firefox does not support
  * ES modules in service workers, but Vite doesn't give us any way of using a
  * different build in service-worker.js to elsewhere. Hence, this hack, which
  * allows us to specify an IIFE output for just service-worker.js.
@@ -31,12 +31,17 @@ const PEER_ID = "service-worker-" + Math.round(Math.random() * 1000000);
 
 async function initializeRepo(wasmBlobUrl) {
   console.log("Initializing automerge wasm with: ", wasmBlobUrl);
-  await Automerge.initializeWasm(wasmBlobUrl);  
+  await Automerge.initializeWasm(wasmBlobUrl);
 
   console.log(`${PEER_ID}: Creating repo`);
   const repo = new Repo({
     storage: new IndexedDBStorageAdapter(),
-    network: [new BrowserWebSocketClientAdapter("wss://sync.automerge.org")],
+    network: [
+      new BrowserWebSocketClientAdapter("wss://sync.automerge.org"),
+      new BrowserWebSocketClientAdapter(
+        "wss://jacquardsync.memoryandthought.me"
+      ),
+    ],
     peerId: PEER_ID,
     sharePolicy: async (peerId) => peerId.includes("storage-server"),
     enableRemoteHeadsGossiping: true,
@@ -45,7 +50,7 @@ async function initializeRepo(wasmBlobUrl) {
   return repo;
 }
 
-let resolveRepo
+let resolveRepo;
 const repo = new Promise((resolve) => {
   resolveRepo = resolve;
 });
@@ -80,11 +85,11 @@ self.addEventListener("message", async (event) => {
   if (event.data && event.data.type === "INITIALIZE_WASM") {
     const wasmBlobUrl = event.data.wasmBlobUrl;
     initializeRepo(wasmBlobUrl).then((repo) => {
-      resolveRepo(repo)
+      resolveRepo(repo);
       // Put the repo on the global context for interactive use
-      self.repo = repo
+      self.repo = repo;
       self.Automerge = Automerge;
-    })
+    });
   }
   if (event.data && event.data.type === "INIT_PORT") {
     const clientPort = event.ports[0];
