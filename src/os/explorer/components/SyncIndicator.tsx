@@ -89,11 +89,11 @@ const SyncIndicatorInner = ({
       throw new Error("tab is connected to multiple peers");
     }
 
-    const storageId = await repo.storageId();
+    const ownStorageId = await repo.storageId();
 
     const ownSyncState = await repo.storageSubsystem.loadSyncState(
       handle.documentId,
-      storageId
+      ownStorageId
     );
 
     const syncServerSyncState = await repo.storageSubsystem.loadSyncState(
@@ -104,7 +104,7 @@ const SyncIndicatorInner = ({
     const data = {
       syncServerHeads,
       self: {
-        storageId,
+        storageId: ownStorageId,
         heads: ownHeads,
         syncState: ownSyncState,
       },
