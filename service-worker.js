@@ -27,11 +27,14 @@ import { MessageChannelNetworkAdapter } from "@automerge/automerge-repo-network-
 
 const CACHE_NAME = "v6";
 
-const PEER_ID = "service-worker-" + Math.round(Math.random() * 1000000);
+let PEER_ID;
 
-async function initializeRepo(wasmBlobUrl, backupSync) {
+async function initializeRepo(wasmBlobUrl, backupSync, peerIdPrefix) {
   console.log("Initializing automerge wasm with: ", wasmBlobUrl);
   await Automerge.initializeWasm(wasmBlobUrl);
+
+  const peerId = "service-worker-" + Math.round(Math.random() * 1000000);
+  PEER_ID = peerIdPrefix ? `${peerIdPrefix}-${peerId}` : peerId;
 
   console.log(`${PEER_ID}: Creating repo`);
   const repo = new Repo({
@@ -55,9 +58,13 @@ async function initializeRepo(wasmBlobUrl, backupSync) {
   return repo;
 }
 
+let isRepoInitialized = false;
 let resolveRepo;
 const repo = new Promise((resolve) => {
-  resolveRepo = resolve;
+  resolveRepo = (repo) => {
+    resolve(repo);
+    isRepoInitialized = true;
+  };
 });
 
 function sendMessageToClients(message) {
@@ -88,14 +95,24 @@ self.addEventListener("message", async (event) => {
   }
   console.log(`${PEER_ID}: Client messaged`, event.data);
   if (event.data && event.data.type === "INITIALIZE_WASM") {
+    if (isRepoInitialized) {
+      console.error("🚨 TRIED TO INITIALIZE THE REPO TWICE! 🚨");
+      console.error(
+        "Please tell someone from the patchwork team that this happend"
+      );
+      return;
+    }
     const wasmBlobUrl = event.data.wasmBlobUrl;
     const backupSync = event.data.backupSync;
-    initializeRepo(wasmBlobUrl, backupSync).then((repo) => {
+    const peerIdPrefix = event.data.peerIdPrefix;
+    initializeRepo(wasmBlobUrl, backupSync, peerIdPrefix).then((repo) => {
       resolveRepo(repo);
       // Put the repo on the global context for interactive use
       self.repo = repo;
       self.Automerge = Automerge;
     });
+
+    return;
   }
   if (event.data && event.data.type === "INIT_PORT") {
     const clientPort = event.ports[0];

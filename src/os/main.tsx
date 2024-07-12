@@ -19,13 +19,11 @@ import { Explorer } from "./explorer/components/Explorer.js";
 import "./index.css";
 import { BACKUP_SYNC } from "./explorer/components/SyncIndicator.js";
 
+// Peer id prefix is added to both the peer id of the client and the service worker
+// to make it easier to grep for logs that are related to your own changes / sync state
+const PEER_ID_PREFIX = localStorage.getItem("PEER_ID_PREFIX");
+
 const serviceWorker = await setupServiceWorker();
-// See the notes in service-worker.js for why we need to do this
-serviceWorker.postMessage({
-  type: "INITIALIZE_WASM",
-  wasmBlobUrl,
-  backupSync: BACKUP_SYNC,
-});
 
 // Service workers stop on their own, which breaks sync.
 // Here we ping the service worker while the tab is running
@@ -55,6 +53,14 @@ async function setupServiceWorker(): Promise<ServiceWorker> {
           registration.installing.onstatechange = (event) => {
             const serviceWorker = event.target as ServiceWorker;
             if (serviceWorker.state === "activated") {
+              // See the notes in service-worker.js for why we need to do this
+              serviceWorker.postMessage({
+                type: "INITIALIZE_WASM",
+                wasmBlobUrl,
+                backupSync: BACKUP_SYNC,
+                peerIdPrefix: PEER_ID_PREFIX,
+              });
+
               resolve(serviceWorker);
             }
           };
@@ -67,12 +73,18 @@ async function setupServiceWorker(): Promise<ServiceWorker> {
 }
 
 async function setupRepo() {
+  if (PEER_ID_PREFIX) {
+    console.log("Using peer id prefix: ", PEER_ID_PREFIX);
+  }
+
   // We create a repo without any network adapters.
   // Later we connect the repo with the repo in the service worker through a message channel
+  const peerId = "frontend-" + Math.round(Math.random() * 10000);
+
   const repo = new Repo({
     storage: new IndexedDBStorageAdapter(),
     network: [],
-    peerId: ("frontend-" + Math.round(Math.random() * 10000)) as PeerId,
+    peerId: (PEER_ID_PREFIX ? `${PEER_ID_PREFIX}-${peerId}` : peerId) as PeerId,
     sharePolicy: async (peerId) => peerId.includes("service-worker"),
     // We need to enable remote heads gossiping so the remote heads of the sync server
     // are forwarded from the service worker to the repo here in the main thread
