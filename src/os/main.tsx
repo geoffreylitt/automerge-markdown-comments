@@ -54,7 +54,6 @@ async function setupServiceWorker(): Promise<ServiceWorker> {
           registration.installing.onstatechange = (event) => {
             const serviceWorker = event.target as ServiceWorker;
             if (serviceWorker.state === "activated") {
-              initializeWasm(serviceWorker);
               resolve(serviceWorker);
             }
           };
@@ -64,17 +63,6 @@ async function setupServiceWorker(): Promise<ServiceWorker> {
       // otherwise return the active service worker
       return registration.active;
     });
-}
-
-// Sends the wasm file for automerge to the service worker
-// See the notes in service-worker.js for why we need to do this
-function initializeWasm(serviceWorker: ServiceWorker) {
-  serviceWorker.postMessage({
-    type: "INITIALIZE_WASM",
-    wasmBlobUrl,
-    backupSync: BACKUP_SYNC,
-    peerIdPrefix: PEER_ID_PREFIX,
-  });
 }
 
 async function setupRepo() {
@@ -106,22 +94,23 @@ navigator.serviceWorker.addEventListener("controllerchange", (event) => {
   // even if we wait above in setupServiceWorker() until the service worker state changes to activated.
   // To make sure we don't call establishMessageChannel twice check if this is actually a new service worker
   if (newServiceWorker !== serviceWorker) {
-    initializeWasm(serviceWorker);
     establishMessageChannel(newServiceWorker);
   }
 });
 
-// Re-establish the MessageChannel if the service worker restarts
 navigator.serviceWorker.addEventListener("message", (event) => {
-  if (event.data.type === "SERVICE_WORKER_RESTARTED") {
-    console.log("Service worker restarted, establishing message channel");
-    initializeWasm(serviceWorker);
-    establishMessageChannel(serviceWorker);
+  switch (event.data.type) {
+    case "SERVICE_WORKER_RESTARTED":
+      // Re-establish the MessageChannel if the service worker restarts
+      establishMessageChannel(serviceWorker);
+      break;
   }
 });
 
 // Connects the repo in the tab with the repo in the service worker through a message channel.
 // The repo in the tab takes advantage of loaded state in the SW.
+// With the init message we also pass the config for initializing the repo. The config only
+// takes effect if the service worker hasn't been initialized before
 // TODO: clean up MessageChannels to old repos
 function establishMessageChannel(serviceWorker: ServiceWorker) {
   // Send one side of a MessageChannel to the service worker and register the other with the repo.
@@ -129,7 +118,17 @@ function establishMessageChannel(serviceWorker: ServiceWorker) {
   repo.networkSubsystem.addNetworkAdapter(
     new MessageChannelNetworkAdapter(messageChannel.port1)
   );
-  serviceWorker.postMessage({ type: "INIT_PORT" }, [messageChannel.port2]);
+  serviceWorker.postMessage(
+    {
+      type: "INIT",
+      config: {
+        wasmBlobUrl,
+        backupSync: BACKUP_SYNC,
+        peerIdPrefix: PEER_ID_PREFIX,
+      },
+    },
+    [messageChannel.port2]
+  );
   console.log("Connected to service worker");
 }
 
