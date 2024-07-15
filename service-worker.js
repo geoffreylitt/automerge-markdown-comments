@@ -27,23 +27,28 @@ import { MessageChannelNetworkAdapter } from "@automerge/automerge-repo-network-
 
 const CACHE_NAME = "v6";
 
-let PEER_ID;
+let PEER_ID = `service-worker-${Math.round(Math.random() * 1000000)}`;
 
-async function initializeRepo(wasmBlobUrl, backupSync, peerIdPrefix) {
-  if (isRepoInitialized) {
-    console.error("🚨 INITIALIZE THE REPO TWICE! 🚨");
-    console.error(
-      "Please tell someone from the patchwork team that this happend"
-    );
-  }
+/* Config is passed by the client in the init message
+{
+  wasmBlobUrl: string  // url to the wasm blob
+  backupSync: boolean  // weather or not the experimental sync server should be enabled
+  peerIdPrefix: string // prefix that is added to peer to make it easier to find own messages in server log
+}*/
+let resolveConfig;
+const config = new Promise((resolve) => {
+  resolveConfig = resolve;
+});
 
-  console.log("Initializing automerge wasm with: ", wasmBlobUrl);
+const repo = new Promise(async (resolve) => {
+  const { wasmBlobUrl, backupSync, peerIdPrefix } = await config;
+
   await Automerge.initializeWasm(wasmBlobUrl);
 
-  const peerId = "service-worker-" + Math.round(Math.random() * 1000000);
-  PEER_ID = peerIdPrefix ? `${peerIdPrefix}-${peerId}` : peerId;
+  if (peerIdPrefix) {
+    PEER_ID = `${peerIdPrefix}-${PEER_ID}`;
+  }
 
-  console.log(`${PEER_ID}: Creating repo`);
   const repo = new Repo({
     storage: new IndexedDBStorageAdapter(),
     network: [
@@ -62,16 +67,11 @@ async function initializeRepo(wasmBlobUrl, backupSync, peerIdPrefix) {
     enableRemoteHeadsGossiping: true,
   });
 
-  return repo;
-}
+  // Put the repo on the global context for interactive use
+  self.repo = repo;
+  self.Automerge = Automerge;
 
-let isRepoInitialized = false;
-let resolveRepo;
-const repo = new Promise((resolve) => {
-  resolveRepo = (repo) => {
-    resolve(repo);
-    isRepoInitialized = true;
-  };
+  resolve(repo);
 });
 
 function sendMessageToClients(message) {
@@ -85,10 +85,6 @@ function sendMessageToClients(message) {
 // When the service worker restarts, tell all clients to re-establish the message channel
 sendMessageToClients({ type: "SERVICE_WORKER_RESTARTED" });
 
-// Paul: I'm not sure what this comment means
-// return a promise from this so that we can wait on it before returning fetch/addNetworkAdapter
-// because otherwise we might not have the WASM module loaded before we get to work.
-
 self.addEventListener("install", () => {
   /* We skip waiting which means the service worker immediately takes over once it's installed
    * Any existing tab that is connected to a previous worker gets sent an "controllerchange" event to switch over to the new service worker
@@ -97,31 +93,22 @@ self.addEventListener("install", () => {
 });
 
 self.addEventListener("message", async (event) => {
-  if (event.data.type === "PING") {
-    return;
-  }
   console.log(`${PEER_ID}: Client messaged`, event.data);
-  if (event.data && event.data.type === "INITIALIZE_WASM") {
-    if (isRepoInitialized) {
-      return;
-    }
-    const wasmBlobUrl = event.data.wasmBlobUrl;
-    const backupSync = event.data.backupSync;
-    const peerIdPrefix = event.data.peerIdPrefix;
-    initializeRepo(wasmBlobUrl, backupSync, peerIdPrefix).then((repo) => {
-      resolveRepo(repo);
-      // Put the repo on the global context for interactive use
-      self.repo = repo;
-      self.Automerge = Automerge;
-    });
 
-    return;
-  }
-  if (event.data && event.data.type === "INIT_PORT") {
-    const clientPort = event.ports[0];
-    (await repo).networkSubsystem.addNetworkAdapter(
-      new MessageChannelNetworkAdapter(clientPort, { useWeakRef: true })
-    );
+  switch (event.data.type) {
+    case "PING":
+      // don't do anything, message is only needed to keep service worker running
+      return;
+
+    case "INIT":
+      // load config and connect with client through message channel
+      // if config is already loaded the new config is ignored
+      const clientPort = event.ports[0];
+      resolveConfig(event.data.config);
+
+      (await repo).networkSubsystem.addNetworkAdapter(
+        new MessageChannelNetworkAdapter(clientPort, { useWeakRef: true })
+      );
   }
 });
 
