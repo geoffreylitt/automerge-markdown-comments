@@ -49,18 +49,12 @@ async function setupServiceWorker(): Promise<ServiceWorker> {
     .then((registration) => {
       // If the service worker is still installing, we wait until it is activated
       if (registration.installing) {
+        console.log("spawing new service worker");
         return new Promise((resolve) => {
           registration.installing.onstatechange = (event) => {
             const serviceWorker = event.target as ServiceWorker;
             if (serviceWorker.state === "activated") {
-              // See the notes in service-worker.js for why we need to do this
-              serviceWorker.postMessage({
-                type: "INITIALIZE_WASM",
-                wasmBlobUrl,
-                backupSync: BACKUP_SYNC,
-                peerIdPrefix: PEER_ID_PREFIX,
-              });
-
+              initializeWasm(serviceWorker);
               resolve(serviceWorker);
             }
           };
@@ -70,6 +64,17 @@ async function setupServiceWorker(): Promise<ServiceWorker> {
       // otherwise return the active service worker
       return registration.active;
     });
+}
+
+// Sends the wasm file for automerge to the service worker
+// See the notes in service-worker.js for why we need to do this
+function initializeWasm(serviceWorker: ServiceWorker) {
+  serviceWorker.postMessage({
+    type: "INITIALIZE_WASM",
+    wasmBlobUrl,
+    backupSync: BACKUP_SYNC,
+    peerIdPrefix: PEER_ID_PREFIX,
+  });
 }
 
 async function setupRepo() {
@@ -101,6 +106,7 @@ navigator.serviceWorker.addEventListener("controllerchange", (event) => {
   // even if we wait above in setupServiceWorker() until the service worker state changes to activated.
   // To make sure we don't call establishMessageChannel twice check if this is actually a new service worker
   if (newServiceWorker !== serviceWorker) {
+    initializeWasm(serviceWorker);
     establishMessageChannel(newServiceWorker);
   }
 });
@@ -109,6 +115,7 @@ navigator.serviceWorker.addEventListener("controllerchange", (event) => {
 navigator.serviceWorker.addEventListener("message", (event) => {
   if (event.data.type === "SERVICE_WORKER_RESTARTED") {
     console.log("Service worker restarted, establishing message channel");
+    initializeWasm(serviceWorker);
     establishMessageChannel(serviceWorker);
   }
 });

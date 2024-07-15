@@ -30,6 +30,13 @@ const CACHE_NAME = "v6";
 let PEER_ID;
 
 async function initializeRepo(wasmBlobUrl, backupSync, peerIdPrefix) {
+  if (isRepoInitialized) {
+    console.error("🚨 INITIALIZE THE REPO TWICE! 🚨");
+    console.error(
+      "Please tell someone from the patchwork team that this happend"
+    );
+  }
+
   console.log("Initializing automerge wasm with: ", wasmBlobUrl);
   await Automerge.initializeWasm(wasmBlobUrl);
 
@@ -96,10 +103,6 @@ self.addEventListener("message", async (event) => {
   console.log(`${PEER_ID}: Client messaged`, event.data);
   if (event.data && event.data.type === "INITIALIZE_WASM") {
     if (isRepoInitialized) {
-      console.error("🚨 TRIED TO INITIALIZE THE REPO TWICE! 🚨");
-      console.error(
-        "Please tell someone from the patchwork team that this happend"
-      );
       return;
     }
     const wasmBlobUrl = event.data.wasmBlobUrl;
